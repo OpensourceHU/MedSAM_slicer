@@ -1,0 +1,19 @@
+[project]
+name = "medsam-slicer-backend"
+version = "0.1.0"
+description = "FastAPI backend for MedSAM Slicer interactive medical image segmentation"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "matplotlib>=3.9.0",
+    "nibabel>=5.3.0",
+    "numpy>=2.0.0",
+    "pillow>=11.0.0",
+    "scikit-image>=0.24.0",
+]
+
+[project.optional-dependencies]
+sam = [
+    "torch>=2.4.0",
+    "sam2>=1.1.0",
+]
