@@ -11,3 +11,6 @@ __pycache__/
 Volumes_dataset_export/
 *.zip
 *_preview.png
+
+# Front-end test volumes written by frontend/tools/make_dev_volume.py
+frontend/dev/

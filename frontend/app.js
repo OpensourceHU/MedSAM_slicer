@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-
-const API_BASE = "http://127.0.0.1:8000";
+import { API_BASE } from "./config.js";
+import { SliceView } from "./slice-view.js";
+import { loadVolumeData } from "./volume-data.js";
 
 const state = {
   filename: null,
@@ -12,6 +13,9 @@ const state = {
   threshold: 60,
   wireframe: false,
   images: { axial: null, coronal: null, sagittal: null },
+  useGL: false, // axial view drawn by WebGL from the volume (true) or from PNG slices (false)
+  tool: "navigate", // "navigate" | "include" | "exclude"
+  prompts: [], // click points: { x, y, z, label } with label 1 = include, 0 = exclude
 };
 
 const els = {
@@ -45,11 +49,84 @@ const els = {
     coronal: document.getElementById("coronalCanvas"),
     sagittal: document.getElementById("sagittalCanvas"),
   },
+  axialGL: document.getElementById("axialGL"),
+  axialStack: document.getElementById("axialStack"),
+  metaRender: document.getElementById("metaRender"),
+  toolButtons: document.querySelectorAll(".tool-btn"),
+  activeToolLabel: document.getElementById("activeToolLabel"),
+  promptInfo: document.getElementById("promptInfo"),
+  undoPromptBtn: document.getElementById("undoPromptBtn"),
+  clearPromptsBtn: document.getElementById("clearPromptsBtn"),
 };
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
+
+// --- WebGL axial view (falls back to Kane's PNG slices if WebGL2 is missing) ---
+let axialView = null;
+try {
+  axialView = new SliceView(els.axialGL, els.canvases.axial, "axial");
+} catch (err) {
+  console.warn("Axial view falls back to PNG slices:", err);
+}
+
+function setRenderMode(useGL, source) {
+  state.useGL = useGL;
+  els.axialStack.classList.toggle("png-mode", !useGL);
+  if (!useGL) {
+    axialView?.deactivate();
+    els.axialStack.style.width = "";
+    els.axialStack.style.height = "";
+  }
+  els.metaRender.textContent = useGL ? `WebGL (${source})` : "PNG slices";
+}
+
+// --- Click points (prompts for SAM2 later) ---
+function setTool(tool) {
+  state.tool = tool;
+  for (const btn of els.toolButtons) btn.classList.toggle("active", btn.dataset.tool === tool);
+  els.activeToolLabel.textContent = tool[0].toUpperCase() + tool.slice(1);
+  els.canvases.axial.dataset.tool = tool;
+}
+
+function isPromptTool() {
+  return state.tool === "include" || state.tool === "exclude";
+}
+
+function updatePromptInfo() {
+  const here = state.prompts.filter((p) => p.z === state.coords.z);
+  const inc = here.filter((p) => p.label === 1).length;
+  els.promptInfo.textContent = state.prompts.length
+    ? `This slice: ${inc} include, ${here.length - inc} exclude · total ${state.prompts.length}`
+    : "No points yet";
+}
+
+function addPrompt(event) {
+  const v = axialView.eventToVoxel(event, state.coords);
+  let label = state.tool === "include" ? 1 : 0;
+  if (event.button === 2) label = 1 - label; // right-click adds the opposite point
+  state.prompts.push({ x: v.x, y: v.y, z: v.z, label });
+  updatePromptInfo();
+  els.coordReadout.textContent = `Voxel: (${v.x}, ${v.y}, ${v.z}) · ${label ? "include" : "exclude"}`;
+  axialView.drawOverlay(state);
+}
+
+function removeLastPrompt() {
+  state.prompts.pop();
+  updatePromptInfo();
+  if (state.useGL) axialView.drawOverlay(state);
+}
+
+// The points of one axial slice in the format agreed for the backend:
+// { slice, points: [[x, y], ...], labels: [1, 0, ...] } in voxel coordinates.
+function promptsForSlice(z = state.coords.z) {
+  const here = state.prompts.filter((p) => p.z === z);
+  return { slice: z, points: here.map((p) => [p.x, p.y]), labels: here.map((p) => p.label) };
+}
+
+// For checking in the browser console: medsam.promptsForSlice()
+window.medsam = { state, promptsForSlice };
 
 // --- Three.js 3D Surface Viewer ---
 const three = {
@@ -249,6 +326,26 @@ async function loadVolume(filename) {
   els.metaSpacing.textContent = info.spacing.map((s) => s.toFixed(2)).join(" × ");
   els.metaRange.textContent = `${info.min_val.toFixed(0)} ~ ${info.max_val.toFixed(0)}`;
 
+  // Points belong to one volume; start empty
+  state.prompts = [];
+
+  // Whole volume into the GPU once (server /data, else frontend/dev/<name>.bin)
+  let volume = null;
+  if (axialView) {
+    els.metaRender.textContent = "loading volume...";
+    volume = await loadVolumeData(filename, info);
+    if (volume) {
+      try {
+        axialView.setVolume(volume.data, info.shape, info.spacing);
+      } catch (err) {
+        console.warn(err);
+        volume = null;
+      }
+    }
+  }
+  if (state.filename !== filename) return; // another volume was picked meanwhile
+  setRenderMode(Boolean(volume), volume?.source);
+
   syncUI();
   refreshAllPlanes();
   update3DCrosshair();
@@ -275,6 +372,8 @@ function syncUI() {
   els.levelSlider.value = Math.round(state.level);
   els.windowVal.textContent = Math.round(state.window);
   els.levelVal.textContent = Math.round(state.level);
+
+  updatePromptInfo();
 }
 
 function getSliceIndex(plane) {
@@ -285,6 +384,10 @@ function getSliceIndex(plane) {
 
 function fetchPlane(plane) {
   if (!state.filename) return;
+  if (plane === "axial" && state.useGL) {
+    axialView.render(state); // drawn in the browser, no server request
+    return;
+  }
   const idx = getSliceIndex(plane);
   const url =
     `${API_BASE}/volumes/${encodeURIComponent(state.filename)}/slice` +
@@ -305,6 +408,10 @@ function refreshAllPlanes() {
 }
 
 function drawPlane(plane) {
+  if (plane === "axial" && state.useGL) {
+    axialView.drawOverlay(state); // crosshair and points only; the image is WebGL
+    return;
+  }
   const canvas = els.canvases[plane];
   const img = state.images[plane];
   if (!img || !state.info) return;
@@ -354,6 +461,18 @@ function redrawCrosshairs() {
 
 function handleCanvasPointer(plane, event) {
   if (!state.info) return;
+  if (plane === "axial" && state.useGL) {
+    // The overlay is drawn at screen resolution, so convert through the view
+    const v = axialView.eventToVoxel(event, state.coords);
+    state.coords.x = v.x;
+    state.coords.y = v.y;
+    fetchPlane("coronal");
+    fetchPlane("sagittal");
+    axialView.drawOverlay(state);
+    syncUI();
+    update3DCrosshair();
+    return;
+  }
   const canvas = els.canvases[plane];
   const rect = canvas.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return;
@@ -420,6 +539,7 @@ function onWLChange() {
   state.window = Number(els.windowSlider.value);
   state.level = Number(els.levelSlider.value);
   syncUI();
+  if (state.useGL) axialView.render(state); // instant: only shader values change
   clearTimeout(wlTimer);
   wlTimer = setTimeout(refreshAllPlanes, 30);
 }
@@ -452,9 +572,14 @@ for (const plane of ["axial", "coronal", "sagittal"]) {
   let dragging = false;
 
   canvas.addEventListener("mousedown", (e) => {
+    if (plane === "axial" && state.useGL && isPromptTool()) {
+      addPrompt(e); // one point per click, no dragging
+      return;
+    }
     dragging = true;
     handleCanvasPointer(plane, e);
   });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   window.addEventListener("mouseup", () => {
     dragging = false;
   });
@@ -483,5 +608,29 @@ for (const plane of ["axial", "coronal", "sagittal"]) {
     { passive: false }
   );
 }
+
+// Tools: buttons, keys N / I / E, Ctrl+Z to undo the last point
+for (const btn of els.toolButtons) {
+  btn.addEventListener("click", () => setTool(btn.dataset.tool));
+}
+els.undoPromptBtn.addEventListener("click", removeLastPrompt);
+els.clearPromptsBtn.addEventListener("click", () => {
+  state.prompts = [];
+  updatePromptInfo();
+  if (state.useGL) axialView.drawOverlay(state);
+});
+window.addEventListener("keydown", (e) => {
+  if (e.target instanceof Element && e.target.closest("input, select, textarea")) return;
+  const key = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && key === "z") {
+    e.preventDefault();
+    removeLastPrompt();
+  } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (key === "n" || key === "escape") setTool("navigate");
+    else if (key === "i") setTool("include");
+    else if (key === "e") setTool("exclude");
+  }
+});
+setTool("navigate");
 
 init();
