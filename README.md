@@ -68,6 +68,20 @@ python3 -m http.server 3000 --directory frontend
 ```
 
 - **Interactive 3-Plane + 3D Viewer**: http://127.0.0.1:3000
+- On Windows, if `python3` is not found: `uv run --project backend python -m http.server 3000 --directory frontend` (from the repo root)
+
+### 3b. Test volumes for the WebGL axial view (until `/data` exists)
+
+The axial view is drawn in the browser with WebGL from the whole volume. Until the backend has a
+`/volumes/{file}/data` endpoint, write the volumes once as `frontend/dev/<name>.bin` (float32, x fastest;
+the folder is ignored by Git). From the repo root:
+
+```bash
+uv run --project backend python frontend/tools/make_dev_volume.py
+```
+
+A volume without a `.bin` file (and without `/data`) is still shown with the PNG slices. The Volume Info
+panel says which one is used ("Axial view: WebGL (dev file)" or "PNG slices").
 
 ### 4. Inspect NIfTI datasets via CLI (optional)
 
@@ -84,6 +98,8 @@ cd backend
 - **Linked 3-Plane Viewer**: Coronal, Sagittal, and Axial views rendered on HTML5 Canvas with synchronized crosshairs, click/drag navigation, and mouse-wheel scrolling.
 - **Window / Level Controls**: Real-time intensity windowing for MRI and 16-bit CT volumes.
 - **3D Surface Reconstruction**: Real-time iso-surface mesh extraction using `skimage.measure.marching_cubes`, rendered with Three.js (`OrbitControls`) and synchronized 3D crosshairs.
+- **WebGL Axial View** (week 1): the axial slice is drawn by a WebGL2 shader from the whole volume in GPU memory (3D texture), so scrolling and window/level need no server request; it fills its panel at the true voxel proportions. Falls back to PNG slices when no volume data is available.
+- **Click Points** (week 1): Navigate / Include / Exclude tools (keys N, I, E). Include and exclude points on the axial view are stored in voxel coordinates and shown as green / red dots on their own slice; right-click adds the opposite point, Ctrl+Z undoes. `medsam.promptsForSlice()` in the browser console gives `{slice, points, labels}`, the format planned for the SAM2 prompts.
 
 ---
 

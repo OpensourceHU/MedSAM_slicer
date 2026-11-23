@@ -297,3 +297,95 @@ canvas {
 #threeContainer canvas:active {
   cursor: grabbing;
 }
+
+/* --- WebGL slice views: image canvas + overlay canvas stacked --- */
+.slice-stack {
+  position: relative;
+  flex: none;
+}
+
+.slice-stack > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+/* Fallback when there is no volume data or no WebGL2: Kane's PNG slice on the overlay canvas */
+.slice-stack.png-mode {
+  display: contents;
+}
+
+.slice-stack.png-mode > #axialGL {
+  display: none;
+}
+
+.slice-stack.png-mode > canvas.slice-overlay {
+  position: static;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#axialCanvas[data-tool="include"],
+#axialCanvas[data-tool="exclude"] {
+  cursor: cell;
+}
+
+/* --- Tools panel --- */
+.tool-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.tool-btn {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tool-btn:hover {
+  border-color: var(--accent);
+}
+
+.tool-btn.active {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tool-btn.tool-include.active {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+}
+
+.tool-btn.tool-exclude.active {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+}
+
+.prompt-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.prompt-actions {
+  display: flex;
+  gap: 4px;
+}

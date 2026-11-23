@@ -38,7 +38,30 @@
           <dt>Shape (X, Y, Z)</dt><dd id="metaShape">-</dd>
           <dt>Spacing (mm)</dt><dd id="metaSpacing">-</dd>
           <dt>Intensity Range</dt><dd id="metaRange">-</dd>
+          <dt>Axial view</dt><dd id="metaRender">-</dd>
         </dl>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Tools</h2>
+          <span class="mesh-stat" id="activeToolLabel">Navigate</span>
+        </div>
+        <div class="tool-buttons">
+          <button type="button" class="tool-btn active" data-tool="navigate"
+            title="Navigate (N): click or drag to move the crosshair">Navigate</button>
+          <button type="button" class="tool-btn tool-include" data-tool="include"
+            title="Include (I): click inside the structure on the axial view. Right-click adds an exclude point">Include</button>
+          <button type="button" class="tool-btn tool-exclude" data-tool="exclude"
+            title="Exclude (E): click outside the structure on the axial view. Right-click adds an include point">Exclude</button>
+        </div>
+        <div class="prompt-row">
+          <span id="promptInfo">No points yet</span>
+          <span class="prompt-actions">
+            <button id="undoPromptBtn" class="btn-small" type="button" title="Remove the last point (Ctrl+Z)">Undo</button>
+            <button id="clearPromptsBtn" class="btn-small" type="button" title="Remove all points">Clear</button>
+          </span>
+        </div>
       </section>
 
       <section class="panel">
@@ -100,6 +123,7 @@
         <h2>Controls</h2>
         <ul>
           <li><strong>2D Views</strong>: Left-click/drag to move crosshair, scroll wheel to change slice</li>
+          <li><strong>Tools</strong>: Include / Exclude place points on the axial view (right-click = the opposite point); keys N, I, E switch tools, Ctrl+Z undoes</li>
           <li><strong>3D View</strong>: Left-drag to orbit, right-drag to pan, scroll wheel to zoom</li>
           <li><strong>Threshold</strong>: Adjust iso-surface level to inspect outer skin or inner bone</li>
         </ul>
@@ -133,7 +157,11 @@
           <span class="slice-label" id="axialLabel">z = 0</span>
         </div>
         <div class="canvas-wrap">
-          <canvas id="axialCanvas"></canvas>
+          <!-- WebGL image underneath, 2D overlay (crosshair, points, mouse) on top -->
+          <div class="slice-stack" id="axialStack">
+            <canvas id="axialGL"></canvas>
+            <canvas id="axialCanvas" class="slice-overlay"></canvas>
+          </div>
         </div>
       </div>
 
