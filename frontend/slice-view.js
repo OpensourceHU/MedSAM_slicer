@@ -220,6 +220,13 @@ export class SliceView {
     const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, width, height);
 
+    // Segmentation mask overlay for this slice (if available)
+    const index = this.sliceIndex(state.coords);
+    const maskImg = state.masks?.[index];
+    if (maskImg) {
+      ctx.drawImage(maskImg, 0, 0, width, height);
+    }
+
     // Crosshair
     const c = this.toScreen(state.coords);
     ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
@@ -232,7 +239,6 @@ export class SliceView {
     ctx.stroke();
 
     // Points placed on this slice only
-    const index = this.sliceIndex(state.coords);
     for (const p of state.prompts ?? []) {
       if (this.sliceIndex(p) !== index) continue;
       const s = this.toScreen(p);

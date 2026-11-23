@@ -16,6 +16,7 @@ const state = {
   useGL: false, // axial view drawn by WebGL from the volume (true) or from PNG slices (false)
   tool: "navigate", // "navigate" | "include" | "exclude"
   prompts: [], // click points: { x, y, z, label } with label 1 = include, 0 = exclude
+  masks: {}, // { [z]: HTMLImageElement } from /segment
 };
 
 const els = {
@@ -57,6 +58,7 @@ const els = {
   promptInfo: document.getElementById("promptInfo"),
   undoPromptBtn: document.getElementById("undoPromptBtn"),
   clearPromptsBtn: document.getElementById("clearPromptsBtn"),
+  propagateBtn: document.getElementById("propagateBtn"),
 };
 
 function clamp(v, min, max) {
@@ -102,6 +104,41 @@ function updatePromptInfo() {
     : "No points yet";
 }
 
+async function runSegmentForSlice(z = state.coords.z) {
+  if (!state.filename) return;
+  const payload = promptsForSlice(z);
+  if (payload.points.length === 0) {
+    delete state.masks[z];
+    if (state.useGL) axialView.drawOverlay(state);
+    updatePromptInfo();
+    return;
+  }
+
+  els.promptInfo.textContent = "Segmenting...";
+  try {
+    const res = await fetch(`${API_BASE}/volumes/${encodeURIComponent(state.filename)}/segment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const img = new Image();
+    img.onload = () => {
+      state.masks[z] = img;
+      if (state.useGL) axialView.drawOverlay(state);
+    };
+    img.src = `data:image/png;base64,${data.mask_png_base64}`;
+
+    const hit = data.cache_hit ? "cached" : `encode ${data.encode_ms}ms`;
+    els.promptInfo.textContent = `IoU ${data.score.toFixed(2)} · ${data.predict_ms}ms (${hit})`;
+  } catch (err) {
+    console.error("Segment failed:", err);
+    els.promptInfo.textContent = "Segment error (check console)";
+  }
+}
+
 function addPrompt(event) {
   const v = axialView.eventToVoxel(event, state.coords);
   let label = state.tool === "include" ? 1 : 0;
@@ -110,12 +147,14 @@ function addPrompt(event) {
   updatePromptInfo();
   els.coordReadout.textContent = `Voxel: (${v.x}, ${v.y}, ${v.z}) · ${label ? "include" : "exclude"}`;
   axialView.drawOverlay(state);
+  runSegmentForSlice(v.z);
 }
 
 function removeLastPrompt() {
-  state.prompts.pop();
+  const removed = state.prompts.pop();
   updatePromptInfo();
   if (state.useGL) axialView.drawOverlay(state);
+  if (removed) runSegmentForSlice(removed.z);
 }
 
 // The points of one axial slice in the format agreed for the backend:
@@ -135,6 +174,7 @@ const three = {
   renderer: null,
   controls: null,
   surfaceMesh: null,
+  maskMesh: null,
   crosshairGroup: new THREE.Group(),
 };
 
@@ -276,6 +316,39 @@ async function refresh3DMesh(threshold = null) {
   els.meshStatusLabel.textContent = `Threshold = ${Math.round(data.threshold)}`;
 }
 
+function setMaskMesh3D(meshData) {
+  if (three.maskMesh) {
+    three.scene.remove(three.maskMesh);
+    three.maskMesh.geometry.dispose();
+    three.maskMesh.material.dispose();
+    three.maskMesh = null;
+  }
+
+  const hasMask = meshData && meshData.face_count > 0;
+  if (three.surfaceMesh) {
+    three.surfaceMesh.material.transparent = hasMask;
+    three.surfaceMesh.material.opacity = hasMask ? 0.2 : 1.0;
+    three.surfaceMesh.material.depthWrite = !hasMask;
+    three.surfaceMesh.material.needsUpdate = true;
+  }
+  if (!hasMask) return;
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(meshData.vertices), 3));
+  geom.setIndex(new THREE.BufferAttribute(new Uint32Array(meshData.faces), 1));
+  geom.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    roughness: 0.4,
+    metalness: 0.05,
+    side: THREE.DoubleSide,
+    wireframe: state.wireframe,
+  });
+  three.maskMesh = new THREE.Mesh(geom, mat);
+  three.scene.add(three.maskMesh);
+}
+
 // --- 2D Slice Viewer ---
 async function init() {
   initThree();
@@ -326,8 +399,10 @@ async function loadVolume(filename) {
   els.metaSpacing.textContent = info.spacing.map((s) => s.toFixed(2)).join(" × ");
   els.metaRange.textContent = `${info.min_val.toFixed(0)} ~ ${info.max_val.toFixed(0)}`;
 
-  // Points belong to one volume; start empty
+  // Points and masks belong to one volume; start empty
   state.prompts = [];
+  state.masks = {};
+  setMaskMesh3D(null);
 
   // Whole volume into the GPU once (server /data, else frontend/dev/<name>.bin)
   let volume = null;
@@ -613,9 +688,58 @@ for (const plane of ["axial", "coronal", "sagittal"]) {
 for (const btn of els.toolButtons) {
   btn.addEventListener("click", () => setTool(btn.dataset.tool));
 }
+async function runPropagateFromSlice(z = state.coords.z) {
+  if (!state.filename) return;
+  const payload = promptsForSlice(z);
+  if (payload.points.length === 0) {
+    els.promptInfo.textContent = "Add a point on this slice first";
+    return;
+  }
+
+  els.promptInfo.textContent = "Propagating both directions...";
+  try {
+    const res = await fetch(
+      `${API_BASE}/volumes/${encodeURIComponent(state.filename)}/propagate?max_steps=15`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const entries = Object.entries(data.slices);
+    await Promise.all(
+      entries.map(
+        ([sliceKey, b64]) =>
+          new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              state.masks[Number(sliceKey)] = img;
+              resolve();
+            };
+            img.src = `data:image/png;base64,${b64}`;
+          })
+      )
+    );
+    if (state.useGL) axialView.drawOverlay(state);
+    setMaskMesh3D(data.mask_mesh);
+    const [zMin, zMax] = data.slice_range ?? [z, z];
+    els.promptInfo.textContent =
+      `z ${zMin}–${zMax} (${data.slice_count} slices) · ${data.volume_ml} mL · ${data.elapsed_ms}ms`;
+  } catch (err) {
+    console.error("Propagate failed:", err);
+    els.promptInfo.textContent = "Propagate error (check console)";
+  }
+}
+
+els.propagateBtn?.addEventListener("click", () => runPropagateFromSlice(state.coords.z));
 els.undoPromptBtn.addEventListener("click", removeLastPrompt);
 els.clearPromptsBtn.addEventListener("click", () => {
   state.prompts = [];
+  state.masks = {};
+  setMaskMesh3D(null);
   updatePromptInfo();
   if (state.useGL) axialView.drawOverlay(state);
 });
