@@ -52,23 +52,32 @@ cd backend
 
 *(If `uv` is already in your `PATH`, you can simply run `uv sync`.)*
 
-### 2. Start the backend API server (Terminal 1)
+### 2. Start both backend & frontend with one command
 
+```bash
+python3 start.py
+```
+
+*(On Windows, if `python3` is not found: `uv run --project backend python start.py`)*
+
+- **Interactive 3-Plane + 3D Viewer**: http://127.0.0.1:3000
+- **Swagger API Documentation**: http://127.0.0.1:8000/docs
+
+<details>
+<summary>Or start backend and frontend manually in separate terminals</summary>
+
+Terminal 1 (Backend):
 ```bash
 cd backend
 ~/.local/bin/uv run fastapi dev app/main.py
 ```
 
-- **Swagger API Documentation**: http://127.0.0.1:8000/docs
-
-### 3. Start the frontend static server (Terminal 2)
-
+Terminal 2 (Frontend):
 ```bash
 python3 -m http.server 3000 --directory frontend
 ```
 
-- **Interactive 3-Plane + 3D Viewer**: http://127.0.0.1:3000
-- On Windows, if `python3` is not found: `uv run --project backend python -m http.server 3000 --directory frontend` (from the repo root)
+</details>
 
 ### 3b. Test volumes for the WebGL axial view (until `/data` exists)
 
