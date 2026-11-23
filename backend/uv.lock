@@ -982,13 +982,10 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pillow" },
+    { name = "sam-2" },
     { name = "scikit-image" },
-]
-
-[package.optional-dependencies]
-sam = [
-    { name = "sam2" },
     { name = "torch" },
+    { name = "torchvision" },
 ]
 
 [package.metadata]
@@ -998,11 +995,11 @@ requires-dist = [
     { name = "nibabel", specifier = ">=5.3.0" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "pillow", specifier = ">=11.0.0" },
-    { name = "sam2", marker = "extra == 'sam'", specifier = ">=1.1.0" },
+    { name = "sam-2", git = "https://github.com/facebookresearch/sam2.git" },
     { name = "scikit-image", specifier = ">=0.24.0" },
-    { name = "torch", marker = "extra == 'sam'", specifier = ">=2.4.0" },
+    { name = "torch", specifier = ">=2.5.1" },
+    { name = "torchvision", specifier = ">=0.20.1" },
 ]
-provides-extras = ["sam"]
 
 [[package]]
 name = "mpmath"
@@ -1830,9 +1827,9 @@ wheels = [
 ]
 
 [[package]]
-name = "sam2"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
+name = "sam-2"
+version = "1.0"
+source = { git = "https://github.com/facebookresearch/sam2.git#2b90b9f5ceec907a1c18123530e92e794ad901a4" }
 dependencies = [
     { name = "hydra-core" },
     { name = "iopath" },
@@ -1843,7 +1840,6 @@ dependencies = [
     { name = "torchvision" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/11/d07fc96688f731a85de6d5260e98b709051eded2b7b5667ae292530bcf90/sam2-1.1.0.tar.gz", hash = "sha256:7e0ea252d43c10d853e3acfce0b5770ac683c30481bd6de311300e9d44f45b74", size = 152836, upload-time = "2024-12-21T09:55:17.154Z" }
 
 [[package]]
 name = "scikit-image"
